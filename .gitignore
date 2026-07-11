@@ -5,5 +5,4 @@ __pycache__/
 data/train/
 data/valid/
 data/test/
-*.pth
 .pytest_cache/
