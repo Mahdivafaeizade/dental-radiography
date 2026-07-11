@@ -8,4 +8,5 @@ matplotlib==3.9.2
 fastapi==0.115.5
 uvicorn==0.32.1
 python-multipart==0.0.20
+streamlit==1.40.2
 pytest==8.3.3
