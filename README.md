@@ -1,12 +1,12 @@
-# Dental X-ray Classifier
+# Dental X-ray AI
 
-Multi-label classification of dental X-ray findings (Cavity, Fillings, Impacted Tooth, Implant) using transfer learning. Stage 1 of a planned 3-stage dental-AI project.
+Multi-stage dental-AI project: classification, object detection, and (planned) segmentation of dental X-ray findings (Cavity, Fillings, Impacted Tooth, Implant).
 
 ## Roadmap
 
-1. **Stage 1 (this repo)** — image classification: does this X-ray contain each finding? (multi-label, since most X-rays have several findings at once)
-2. **Stage 2 (planned)** — object detection on the same dataset: exactly *where* is each finding located (bounding boxes)
-3. **Stage 3 (planned)** — segmentation (pixel-level tooth boundaries) + a single unified UI combining all three models
+1. **Stage 1 (done)** — image classification: does this X-ray contain each finding? (multi-label, since most X-rays have several findings at once)
+2. **Stage 2 (done)** — object detection: exactly *where* is each finding located (bounding boxes), using YOLO11
+3. **Stage 3 (planned)** — segmentation (pixel-level tooth boundaries) using a second dataset + a single unified UI combining all three models
 
 ## Problem
 
@@ -20,12 +20,22 @@ Manually reviewing dental X-rays for common findings is time-consuming. This mod
 
 ## Approach
 
+### Stage 1: Classification
+
 1. **EDA** — confirmed the multi-label nature of the data and measured class imbalance (Fillings present in 80% of images, Cavity in only 21%).
-2. **Model** — MobileNetV2 (ImageNet-pretrained), final layer replaced for 4-way multi-label output. Chosen for CPU-friendly training speed given no working local GPU.
+2. **Model** — MobileNetV2 (ImageNet-pretrained), final layer replaced for 4-way multi-label output.
 3. **Training** — `BCEWithLogitsLoss` with `pos_weight` to counteract class imbalance (without it, the model would learn to just predict "no" for rare classes like Cavity). Best-checkpoint saving based on validation loss, since training loss kept improving past the point where validation loss started getting worse (overfitting after ~epoch 3).
 4. **Evaluation** — per-class precision/recall/F1 (not just loss), since loss alone doesn't reveal practical performance on rare classes.
 
+### Stage 2: Object detection
+
+1. **Conversion** — the dataset's bounding-box CSV annotations (pixel corner coordinates) converted to YOLO format (normalized center coordinates + per-image label files).
+2. **Model** — YOLO11n (nano), transfer-learned from COCO pretrained weights.
+3. **Training** — first trained on CPU (30 epochs, 416px, ~57 min) as a baseline, then retrained on GPU (RTX 3050 Ti) at full 640px resolution for up to 100 epochs with early stopping (patience=20) — GPU training was ~5x faster per epoch, and the larger image size + more epochs meaningfully improved detection of small/subtle findings.
+
 ## Results
+
+### Stage 1: Classification (precision / recall / F1)
 
 | Class | Precision | Recall | F1 |
 |---|---|---|---|
@@ -35,6 +45,18 @@ Manually reviewing dental X-rays for common findings is time-consuming. This mod
 | Cavity | 0.37 | 0.61 | 0.46 |
 
 Rare classes (Cavity, Impacted Tooth) show higher recall than precision — the model errs toward flagging possible findings rather than missing them, a reasonable tradeoff for a screening tool.
+
+### Stage 2: Object detection (mAP50)
+
+| Class | CPU baseline (416px, 30 epochs) | GPU (640px, 53 epochs) |
+|---|---|---|
+| Cavity | 0.206 | **0.374** |
+| Fillings | 0.858 | 0.904 |
+| Impacted Tooth | 0.791 | 0.808 |
+| Implant | 0.961 | 0.970 |
+| **Overall** | 0.704 | **0.764** |
+
+GPU retraining nearly doubled Cavity detection (our weakest class) and improved every other class too. Inference dropped from 14.3ms/image (CPU) to 3.2ms/image (GPU).
 
 ## Setup
 
@@ -46,26 +68,28 @@ Download the dataset from [Kaggle](https://www.kaggle.com/datasets/imtkaggleteam
 
 ## Usage
 
-Train:
+Train the classifier (stage 1):
 ```bash
 python3 -m src.train
-```
-
-Evaluate:
-```bash
 python3 -m src.evaluate
 ```
 
-Run the UI:
+Convert annotations and train the detector (stage 2):
+```bash
+python3 -m src.yolo_convert
+python3 -m src.train_yolo
+```
+
+Run the UI (both stages, tabbed):
 ```bash
 streamlit run app.py
 ```
 
-Run the API:
+Run the classification API:
 ```bash
 python3 -m uvicorn src.api:app --reload
 ```
 
 ## Tech stack
 
-Python, PyTorch, torchvision (MobileNetV2 transfer learning), FastAPI, Streamlit.
+Python, PyTorch, torchvision (MobileNetV2 transfer learning), Ultralytics YOLO11 (object detection), FastAPI, Streamlit.

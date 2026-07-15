@@ -8,12 +8,13 @@ def main():
 
     model.train(
         data="yolo_data/data.yaml",
-        epochs=30,
-        imgsz=416,
-        batch=8,
-        device="cpu",
+        epochs=100,
+        imgsz=640,
+        batch=16,
+        device="0",
+        patience=20,
         project="runs",
-        name="dental_yolo",
+        name="dental_yolo_gpu",
     )
 
 
