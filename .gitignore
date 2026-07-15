@@ -7,4 +7,6 @@ data/valid/
 data/test/
 yolo_data/
 runs/
+yolo11n.pt
+yolo26n.pt
 .pytest_cache/
