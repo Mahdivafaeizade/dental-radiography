@@ -1,4 +1,4 @@
-"""Streamlit UI for the dental X-ray classifier (stage 1) and detector (stage 2)."""
+"""Streamlit UI for the dental X-ray classifier, detector, and segmenter."""
 
 import io
 
@@ -10,11 +10,12 @@ from PIL import Image
 from src.data_loader import CLASSES
 from src.dataset import EVAL_TRANSFORMS
 from src.detect import load_detector
+from src.segment import load_segmenter
 from src.train import build_model, DEVICE
 
 st.set_page_config(page_title="Dental X-ray AI", page_icon="🦷")
 st.title("🦷 Dental X-ray AI")
-st.caption("Stage 1: classification (what findings are present) · Stage 2: detection (exactly where)")
+st.caption("Stage 1: classification · Stage 2: detection (where) · Stage 3: segmentation (which tooth)")
 
 
 @st.cache_resource
@@ -27,6 +28,7 @@ def load_classifier():
 
 classifier = load_classifier()
 detector = load_detector()
+segmenter = load_segmenter()
 
 uploaded_file = st.file_uploader("Upload a dental X-ray image", type=["jpg", "jpeg", "png"])
 
@@ -34,7 +36,9 @@ if uploaded_file is not None:
     image_bytes = uploaded_file.read()
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-    tab1, tab2 = st.tabs(["Stage 1: Classification", "Stage 2: Detection"])
+    tab1, tab2, tab3 = st.tabs(
+        ["Stage 1: Classification", "Stage 2: Detection", "Stage 3: Segmentation"]
+    )
 
     with tab1:
         st.image(image, caption="Uploaded X-ray", use_container_width=True)
@@ -61,3 +65,19 @@ if uploaded_file is not None:
             cls_id = int(box.cls[0])
             conf = float(box.conf[0])
             st.write(f"- **{results.names[cls_id]}**: {conf:.1%} confidence")
+
+    with tab3:
+        seg_conf = st.slider("Confidence threshold", 0.0, 1.0, 0.25, 0.05, key="seg_conf")
+        seg_results = segmenter.predict(np.array(image), conf=seg_conf, verbose=False)[0]
+        seg_annotated = seg_results.plot(boxes=False, labels=False, conf=False)[..., ::-1]
+        st.image(seg_annotated, caption="Segmented teeth (Universal numbering)", use_container_width=True)
+
+        st.subheader("Teeth identified")
+        if seg_results.boxes is None or len(seg_results.boxes) == 0:
+            st.write("No teeth segmented above this confidence threshold.")
+        else:
+            teeth = sorted(
+                {seg_results.names[int(b.cls[0])] for b in seg_results.boxes},
+                key=lambda x: int(x),
+            )
+            st.write(f"Tooth numbers: {', '.join(teeth)}")
